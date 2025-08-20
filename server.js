@@ -1,176 +1,248 @@
-import { createServer } from "http";
+import express from "express";
+import { db } from "./firebase.js";
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
+
+const app = express();
+app.use(express.json());
+
+// Swagger setup
+const options = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Products API",
+      version: "1.0.0",
+      description: "HTTP REST API for managing products",
+    },
+  },
+  apis: ["./server.js"],
+};
+const specs = swaggerJsdoc(options);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
+
+/**
+ * @swagger
+ * /products:
+ *   get:
+ *     summary: Get all products
+ *     responses:
+ *       200:
+ *         description: List of all products
+ */
+app.get("/products", async (req, res) => {
+  const snapshot = await db.collection("products").get();
+  const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  res.json(products);
+});
+
+/**
+ * @swagger
+ * /products/expensivest:
+ *   get:
+ *     summary: Get the most expensive product
+ *     responses:
+ *       200:
+ *         description: Returns the product with the highest price
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 price:
+ *                   type: number
+ *       404:
+ *         description: No products found
+ */
+app.get("/products/expensivest", async (req, res) => {
+  const snapshot = await db.collection("products").orderBy("price", "desc").limit(1).get();
+  if (snapshot.empty) return res.status(404).json({ error: "No products found" });
+
+  const product = snapshot.docs[0];
+  res.json({ id: product.id, ...product.data() });
+});
+
+/**
+ * @swagger
+ * /products/cheapest:
+ *   get:
+ *     summary: Get the cheapest product
+ *     responses:
+ *       200:
+ *         description: Returns the product with the lowest price
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 price:
+ *                   type: number
+ *       404:
+ *         description: No products found
+ */
+app.get("/products/cheapest", async (req, res) => {
+  const snapshot = await db.collection("products").orderBy("price", "asc").limit(1).get();
+  if (snapshot.empty) return res.status(404).json({ error: "No products found" });
+
+  const product = snapshot.docs[0];
+  res.json({ id: product.id, ...product.data() });
+});
+
+/**
+ * @swagger
+ * /products/median:
+ *   get:
+ *     summary: Get the median product by price
+ *     responses:
+ *       200:
+ *         description: Returns the median product based on ascending price
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 price:
+ *                   type: number
+ *       404:
+ *         description: No products found
+ */
+app.get("/products/median", async (req, res) => {
+  const snapshot = await db.collection("products").orderBy("price", "asc").get();
+  const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  if (products.length === 0) return res.status(404).json({ error: "No products found" });
+
+  const mid = Math.floor(products.length / 2);
+  let medianProduct = products.length % 2 === 1 ? products[mid] : products[mid - 1];
+
+  res.json(medianProduct);
+});
+
+/**
+ * @swagger
+ * /products/count:
+ *   get:
+ *     summary: Get the total number of products
+ *     responses:
+ *       200:
+ *         description: Count of products
+ */
+app.get("/products/count", async (req, res) => {
+  const snapshot = await db.collection("products").get();
+  res.json({ count: snapshot.size });
+});
+
+/**
+ * @swagger
+ * /products:
+ *   post:
+ *     summary: Add a new product
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               id:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               price:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Product added
+ *       400:
+ *         description: Invalid input
+ */
+app.post("/products", async (req, res) => {
+  const { id, name, price } = req.body;
+  if (!id || !name) return res.status(400).json({ error: "id and name required" });
+
+  await db.collection("products").doc(id.toString()).set({ id, name, price });
+  res.status(201).json({ id, name, price });
+});
+
+/**
+ * @swagger
+ * /products/{id}:
+ *   get:
+ *     summary: Get product by ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Product ID
+ *     responses:
+ *       200:
+ *         description: Product object
+ *       404:
+ *         description: Product not found
+ */
+app.get("/products/:id", async (req, res) => {
+  const doc = await db.collection("products").doc(req.params.id).get();
+  if (!doc.exists) return res.status(404).json({ error: "Product not found" });
+  res.json({ id: doc.id, ...doc.data() });
+});
+
+/**
+ * @swagger
+ * /products/{id}:
+ *   delete:
+ *     summary: Delete a product by ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Product ID
+ *     responses:
+ *       200:
+ *         description: Product deleted
+ *       404:
+ *         description: Product not found
+ */
+app.delete("/products/:id", async (req, res) => {
+  const doc = await db.collection("products").doc(req.params.id).get();
+  if (!doc.exists) return res.status(404).json({ error: "Product not found" });
+  await db.collection("products").doc(req.params.id).delete();
+  res.json({ message: "Product deleted" });
+});
+
+/**
+ * @swagger
+ * /products:
+ *   delete:
+ *     summary: Delete all products
+ *     responses:
+ *       200:
+ *         description: All products deleted
+ */
+app.delete("/products", async (req, res) => {
+  const snapshot = await db.collection("products").get();
+  const batch = db.batch();
+  snapshot.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+  res.json({ message: "All products deleted" });
+});
+
+
+// Start server
 const PORT = process.env.PORT;
-
-let products = [
-  { id: 1, name: "Apple", price: 123.12 },
-  { id: 2, name: "Orange", price: 300.5 },
-  { id: 3, name: "Lime", price: 200.1 },
-  { id: 11, name: "Strawberry", price: 100.13 },
-];
-
-// Logger middleware
-const logger = (req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-};
-
-// JSON middleware
-const jsonMiddleware = (req, res, next) => {
-  res.setHeader("Content-Type", "application/json");
-  next();
-};
-
-const sendJSON = (res, status, data) => {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-};
-
-// Route handler for GET /products
-const getProductsHandler = (req, res) => {
-  res.write(JSON.stringify(products));
-  res.end();
-};
-
-// Rounter handler for GET /products/id
-const getProductByIdHandler = (req, res) => {
-  const id = req.url.split("/")[2];
-  const product = products.find((product) => product.id === parseInt(id));
-
-  if (product) {
-    res.write(JSON.stringify(product));
-  } else {
-    res.statusCode = 404;
-    res.write(JSON.stringify({ message: "Product not found" }));
-  }
-  res.end();
-};
-
-// Rounter handler for GET /products/expensivest
-const getExpensivestProduct = (req, res) => {
-  const expensivestProduct = products.reduce((maxProduct, product) =>
-    product.price > maxProduct.price ? product : maxProduct
-  );
-
-  if (expensivestProduct) {
-    res.write(JSON.stringify(expensivestProduct));
-  } else {
-    res.statusCode = 404;
-    res.write(JSON.stringify({ message: "Product not found" }));
-  }
-  res.end();
-};
-
-// Rounter handler for GET /products/cheapest
-const getCheapestProduct = (req, res) => {
-  const cheapestProduct = products.reduce((minProduct, product) =>
-    product.price < minProduct.price ? product : minProduct
-  );
-
-  if (cheapestProduct) {
-    res.write(JSON.stringify(cheapestProduct));
-  } else {
-    res.statusCode = 404;
-    res.write(JSON.stringify({ message: "Product not found" }));
-  }
-  res.end();
-};
-
-// Rounter handler for GET /products/median
-const getMedianProduct = (req, res) => {
-  if (products.length === 0) return null;
-
-  const sorted = [...products].sort((a, b) => a["id"] - b["id"]);
-  const mid = Math.floor(sorted.length / 2);
-
-  if (sorted.length % 2 !== 0) {
-    res.write(JSON.stringify(sorted[mid]));
-  } else {
-    res.write(JSON.stringify([sorted[mid - 1], sorted[mid]]));
-  }
-
-  res.end();
-};
-
-// Rounter handler for DELETE /products/id
-const deleteProductByIdHandler = (req, res) => {
-  const match = req.url.match(/^\/products\/(\d+)$/);
-  if (match && req.method === "DELETE") {
-    const id = parseInt(match[1]);
-    const index = products.findIndex((u) => u.id === id);
-
-    if (index === -1) {
-      return sendJSON(res, 404, { error: "Product not found" });
-    }
-
-    products.splice(index, 1);
-    return sendJSON(res, 200, {
-      message: `Product with id: '${id}' deleted`,
-    });
-  } else {
-    // Not found
-    sendJSON(res, 404, { error: "Not Found" });
-  }
-
-  res.end();
-};
-
-// Route handler for POST /products
-const createProductHandler = (req, res) => {
-  let body = "";
-  req.on("data", (chunk) => {
-    body += chunk.toString();
-  });
-  req.on("end", () => {
-    const newProduct = JSON.parse(body);
-    if (!newProduct || newProduct.name.trim() === "") {
-      return sendJSON(res, 400, { message: "Name is required" });
-    }
-    products.push(newProduct);
-    res.statusCode = 201;
-    res.write(JSON.stringify(newProduct));
-    res.end();
-  });
-};
-
-// Not found handler
-const notFoundHandler = (req, res) => {
-  res.statusCode = 404;
-  res.write(JSON.stringify({ message: "Route not found" }));
-  res.end();
-};
-
-const server = createServer((req, res) => {
-  logger(req, res, () => {
-    jsonMiddleware(req, res, () => {
-      if (req.url === "/products" && req.method === "GET") {
-        getProductsHandler(req, res);
-      } else if (req.url.match(/^\/products\/(\d+)$/) && req.method === "GET") {
-        getProductByIdHandler(req, res);
-      } else if (req.url === "/products" && req.method === "POST") {
-        createProductHandler(req, res);
-      } else if (req.url === "/products/count" && req.method === "GET") {
-        return sendJSON(res, 200, { count: products.length });
-      } else if (req.url === "/products/expensivest" && req.method === "GET") {
-        getExpensivestProduct(req, res);
-      } else if (req.url === "/products/cheapest" && req.method === "GET") {
-        getCheapestProduct(req, res);
-      } else if (req.url === "/products/median" && req.method === "GET") {
-        getMedianProduct(req, res);
-      } else if (req.url === "/products" && req.method === "DELETE") {
-        products = [];
-        return sendJSON(res, 200, { message: "All products deleted" });
-      } else if (
-        req.url.match(/^\/products\/(\d+)$/) &&
-        req.method === "DELETE"
-      ) {
-        deleteProductByIdHandler(req, res);
-      } else {
-        notFoundHandler(req, res);
-      }
-    });
-  });
-});
-
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
