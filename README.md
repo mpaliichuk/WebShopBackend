@@ -17,6 +17,8 @@ This project is a HTTP REST API for managing products, built with Node.js, Expre
 ```bash
 git clone https://github.com/mpaliichuk/WebShopBackend.git
 
+cd WebShopBackend
+
 Install dependencies:
 
 npm install
