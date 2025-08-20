@@ -40,3 +40,6 @@ The API will run on [http://localhost:8000](http://localhost:8000) (or the port 
 ## Swagger API
 
 The Swagger will run on [http://localhost:8000/api-docs](http://localhost:8000/api-docs)
+
+## Notes
+This project does not use an ORM since Firebase Firestore already provides a native SDK for database access and data modeling
